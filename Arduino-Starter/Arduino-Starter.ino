@@ -7,6 +7,13 @@
 #error "Team number must be within 1 and 20"
 #endif
 
+#include <QTRSensors.h>
+
+QTRSensors qtr;
+
+const uint8_t SensorCount = 6;
+uint16_t sensorValues[SensorCount];
+
 void setup() {
   Serial.begin(115200);
 }
