@@ -56,11 +56,15 @@ void setMotors(float speed, float rot) {
 }
 
 void dropPallet() {
+  setMotors(0,0);
   for (int i = 0; i < 3; i++) {
     RR_setServo2(70);
-    delay(500);
+    delay(200);
     RR_setServo2(80);
+    delay(200);
   }
+  setMotors(-0.5, 0);
+  delay(1000);
   RR_setServo2(90);
   servo2Rot = 90;
 }
@@ -82,6 +86,7 @@ void loop() {
 
   if (btnStart) {
     auton_mode = true;
+    RR_setServo2(95);
     digitalWrite(LED_BUILTIN, HIGH);
   }
   else if (btnBack) {
@@ -118,7 +123,7 @@ void loop() {
     // Arcade-drive scheme
     // Left Y-axis = throttle
     // Right X-axis = steering
-    setMotors(k * leftY, k * rightX);
+    setMotors(k * leftY, 0.75 * k * rightX);
 
     // Control servo 2 using the shoulder buttons
     if (btnLB && !ignoreLB && servo2Rot < 110) {
@@ -137,7 +142,7 @@ void loop() {
   }
   else if (auton_mode) {
     float dist = RR_getUltrasonic();
-    if (1 < dist && dist < 5) {
+    if (1 < dist && dist < 4) {
       dropPallet();
       auton_mode = false;
       digitalWrite(LED_BUILTIN, LOW);
