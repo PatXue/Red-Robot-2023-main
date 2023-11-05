@@ -15,16 +15,22 @@ const uint8_t SensorCount = 6;
 int sensorValues[SensorCount];
 
 // PID control loop values
-const float Kp = 0.5;
+const float Kp = 0.65;
 const float Ki = 0.0;
-const float Kd = 0.1;
+const float Kd = 0.0;
 float accum = 0.0;
-float prevError = 0.0;
-const float speed = 0.5;
+float prevError = -1.0;
+const float speed = 0.3;
 
 bool auton_mode = false;
+bool slowMode = false;
+
+bool ignoreRB = false;
+bool ignoreLB = false;
+bool ignoreRT = false;
 
 int servo2Rot = 90;
+
 
 float blackLinePos(int sensorValues[SensorCount]) {
   int n = 0;
@@ -45,8 +51,18 @@ float blackLinePos(int sensorValues[SensorCount]) {
 }
 
 void setMotors(float speed, float rot) {
-  RR_setMotor1(speed - rot);
-  RR_setMotor2(speed + rot);
+  RR_setMotor2(speed - rot);
+  RR_setMotor3(speed + rot);
+}
+
+void dropPallet() {
+  for (int i = 0; i < 3; i++) {
+    RR_setServo2(70);
+    delay(500);
+    RR_setServo2(80);
+  }
+  RR_setServo2(90);
+  servo2Rot = 90;
 }
 
 void setup() {
@@ -60,9 +76,6 @@ void setup() {
 int temp = 0;
 
 void loop() {
-  RR_setMotor4(1.0);
-  RR_setMotor2(1.0);
-  return;
   // Get start and back buttons to switch between autonomous and manual modes
   bool btnStart = RR_buttonStart();
   bool btnBack = RR_buttonBack();
@@ -95,7 +108,12 @@ void loop() {
     bool btnLT = RR_buttonLT();
 
     // Motor sensitivity
-    float k = btnRT ? 0.25 : 1.0;
+    if (btnRT && !ignoreRT) {
+      slowMode = !slowMode;
+      ignoreRT = true;
+    }
+    float k = slowMode ? 0.25 : 1.0;
+    if (!btnRT && ignoreRT) ignoreRT = false;
 
     // Arcade-drive scheme
     // Left Y-axis = throttle
@@ -103,37 +121,53 @@ void loop() {
     setMotors(k * leftY, k * rightX);
 
     // Control servo 2 using the shoulder buttons
-    if (btnLB && servo2Rot < 135) servo2Rot += 2;
-    else if (btnRB && servo2Rot > 45) servo2Rot -= 2;
+    if (btnLB && !ignoreLB && servo2Rot < 110) {
+      servo2Rot += 10;
+      ignoreLB = true;
+    }
+    else if (btnRB && !ignoreRB && servo2Rot > 70) {
+      servo2Rot -= 10;
+      ignoreRB = true;
+    }
     RR_setServo2(servo2Rot);
+    if (!btnLB && ignoreLB) ignoreLB = false;
+    if (!btnRB && ignoreRB) ignoreRB = false;
 
     // we also have RR_setServo3 and RR_setServo4 available
   }
   else if (auton_mode) {
-    // read the ultrasonic sensors
-    // Serial.print("Ultrasonic=");
-    // Serial.print(RR_getUltrasonic());
-    // Serial.print(" ;; ");
-    // int sensors[6];
+    float dist = RR_getUltrasonic();
+    if (1 < dist && dist < 5) {
+      dropPallet();
+      auton_mode = false;
+      digitalWrite(LED_BUILTIN, LOW);
+    }
+    else {
+      // PID control loop
+      float error = blackLinePos(sensorValues) - 2.5;
+      // if (prevError < 0.0) prevError = error; // Set initial value of prevError
 
-    // Serial.print("Line sensors=");
-    // RR_getLineSensors(sensorValues);
-    // for (int i = 0; i < 6; ++i) {
-    //   Serial.print(sensorValues[i]);
-    //   Serial.print(" ");
-    // }
-    // Serial.print("\tLine pos=");
-    // Serial.print(blackLinePos(sensorValues));
-    // Serial.println();
+      accum += error * 0.02;
+      float deriv = (error - prevError) / 0.02;
+      float adjustment = Kp*error + Ki*accum - Kd*deriv;
+      prevError = error;
 
-    float error = blackLinePos(sensorValues) - 2.5;
-    accum += error * 0.02;
-    float deriv = (error - prevError) / 0.02;
-    float adjustment = Kp*error + Ki*accum + Kd*deriv;
-    prevError = error;
-
-    setMotors(speed, adjustment*speed);
+      setMotors(speed, adjustment*speed);
+    }
   }
+
+  // Serial.print("Ultrasonic sensor= ");
+  // Serial.println(RR_getUltrasonic());
+
+  Serial.print("Line sensors=");
+  RR_getLineSensors(sensorValues);
+  for (int i = 0; i < 6; ++i) {
+    Serial.print(sensorValues[i]);
+    Serial.print(" ");
+  }
+  Serial.print("\tLine pos=");
+  Serial.print(blackLinePos(sensorValues));
+  Serial.println();
 
   // This is important - it sleeps for 0.02 seconds (= 50 times / second)
   // Running the code too fast will overwhelm the microcontroller and peripherals
